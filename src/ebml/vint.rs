@@ -1,81 +1,98 @@
-use std::io::Read;
+use std::io::{self, Read};
 
 use crate::ebml::error::ParseError;
 
+fn leading_zeros_u8(byte: u8) -> u8 {
+    u8::try_from(byte.leading_zeros()).expect("leading 0's of u8 cannot exceed u8 (0-255)")
+}
+
 #[derive(Debug)]
-pub struct VINT {
+pub struct RawVint {
     pub value: u64,
     pub length: u8, // 1–8 bytes
 }
 
-pub fn read_vint<R: Read>(reader: &mut R) -> Result<VINT, ParseError> {
-    // Read first byte to determine length
-    let mut first = [0u8; 1];
-    reader
-        .read_exact(&mut first)
-        .map_err(ParseError::map_io_vint)?;
-    let first_byte = first[0];
+impl RawVint {
+    pub fn read_from<R: Read>(reader: &mut R) -> Result<Option<Self>, ParseError> {
+        let mut first_byte = [0u8; 1];
+        let n = reader.read(&mut first_byte)?;
+        if n == 0 {
+            return Ok(None); // EOF reached
+        }
 
-    // Determine length by VINT_MARKER position
-    let length = first_byte.leading_zeros() as u8 + 1;
-    if length > 8 || length == 0 {
-        return Err(ParseError::InvalidVINTLength);
+        // Determine length by VINT_MARKER position
+        let first_byte = first_byte[0];
+        let length = leading_zeros_u8(first_byte) + 1;
+        if length > 8 || length == 0 {
+            return Err(ParseError::NoVINTMarker);
+        }
+
+        // Read VINT_DATA bytes
+        let mut value = u64::from(first_byte);
+        if length > 1 {
+            let mut buffer = vec![0u8; (length - 1) as usize];
+            reader.read_exact(&mut buffer).map_err(|e| match e.kind() {
+                io::ErrorKind::UnexpectedEof => ParseError::UnexpectedEOFInVINT,
+                _ => ParseError::Io(e),
+            })?;
+            for b in buffer {
+                value = (value << 8) | u64::from(b);
+            }
+        }
+
+        Ok(Some(Self { value, length }))
     }
-
-    // Strip length prefix up to VINT_MARKER position
-    let mut value = match length {
-        8 => 0x00,
-        _ => (first_byte & (0xFF >> length)) as u64,
-    };
-
-    // Read remaining bytes
-    for _ in 1..length {
-        let mut b = [0u8; 1];
-        reader.read_exact(&mut b).map_err(ParseError::map_io_vint)?;
-        value = (value << 8) | (b[0] as u64);
-    }
-
-    Ok(VINT { value, length })
 }
 
-// TESTS
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
 
-    //TODO: Add more test-cases for different VINT lengths and edge cases
     #[test]
-    fn test_read_vint() {
+    fn test_read_raw_vint() {
         let cases = vec![
-            (vec![0b1001_1100], 1, 0b0001_1100),
-            (vec![0b0001_0101, 0x00, 0x00, 0xFF], 4, 0x050000FF), // 0b0001_50000FF -> length=4, value=0x050000FF
-            (vec![0b0111_1110, 0xAC], 2, 0x3EAC),
+            (vec![0x83], 1, 0x83),
+            (vec![0x4F, 0xAB], 2, 0x4FAB),
+            (vec![0x1A, 0x13, 0xBB, 0x00], 4, 0x1A13BB00),
+            (
+                vec![0x01, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00],
+                8,
+                0x0100FF00FF00FF00,
+            ),
         ];
 
         for (input, expected_length, expected_value) in cases {
             let mut cursor = Cursor::new(&input);
-            let vint = read_vint(&mut cursor).unwrap();
+            let raw_vint = RawVint::read_from(&mut cursor).unwrap().unwrap();
             assert_eq!(
-                vint.length, expected_length,
-                "input {:#02x?}, exptected length {} got {}",
-                input, expected_length, vint.length
+                raw_vint.length, expected_length,
+                "input {:#02x?}, expected length {}, got {}",
+                input, expected_length, raw_vint.length
             );
             assert_eq!(
-                vint.value, expected_value,
-                "input {:#02x?}, expected {:#02x} got {:#02x}",
-                input, expected_value, vint.value
+                raw_vint.value, expected_value,
+                "input {:#02x?}, expected value {:#x}, got {:#x}",
+                input, expected_value, raw_vint.value
             );
         }
     }
 
     #[test]
-    fn test_invalid_vint_length() {
-        // Invalid VINT (no leading 1)
-        let data = vec![0x00];
+    fn test_rawint_eof() {
+        let data = vec![];
         let mut cursor = Cursor::new(data);
-        let result = read_vint(&mut cursor);
-        assert!(matches!(result, Err(ParseError::InvalidVINTLength)));
+        let result = RawVint::read_from(&mut cursor);
+        assert!(matches!(result, Ok(None)));
+    }
+
+    #[test]
+    fn test_no_vint_marker() {
+        let data = vec![0x00]; // Invalid VINT, no VINT_MARKER in first byte
+        let mut cursor = Cursor::new(data);
+        let result = RawVint::read_from(&mut cursor);
+        dbg!(&result);
+        assert!(matches!(result, Err(ParseError::NoVINTMarker)));
     }
 
     #[test]
@@ -89,7 +106,7 @@ mod tests {
 
         for input in cases {
             let mut cursor = Cursor::new(&input);
-            let result = read_vint(&mut cursor);
+            let result = RawVint::read_from(&mut cursor);
             assert!(
                 matches!(result, Err(ParseError::UnexpectedEOFInVINT)),
                 "input {:#02x?}, expected Err(ParseError::UnexpectedEOFInVINT) got {:?}",

@@ -1,6 +1,6 @@
-pub mod error;
-pub mod vint;
 pub mod element;
-
-pub use error::ParseError;
-pub use element::{ElementHeader, read_element_header};
+pub mod element_header;
+pub mod error;
+pub mod matroska_ids;
+pub mod matroska_reader;
+pub mod vint;

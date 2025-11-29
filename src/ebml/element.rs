@@ -1,20 +1,37 @@
-use super::vint::{self, VINT};
-use super::error;
-use std::io::Read;
+use std::fmt;
 
-pub struct ElementHeader {
-    pub id: VINT,
-    pub data_size: VINT,
-    pub header_size: u8,
+pub struct NodeMeta {
+    pub header_start: u64,
+    pub data_start: u64,
+    pub id: u32,
+    pub data_size: u64,
 }
 
-pub fn read_element_header<R: Read>(reader: &mut R) -> Result<ElementHeader, error::ParseError> {
-    let id_vint = vint::read_vint(reader)?;
-    let size_vint = vint::read_vint(reader)?;
+// Custom Debug impl to format id as hex
+impl fmt::Debug for NodeMeta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeMeta")
+            .field("id", &format_args!("{:#X}", self.id))
+            .field("header_start", &self.header_start)
+            .field("data_start", &self.data_start)
+            .field("data_size", &self.data_size)
+            .finish()
+    }
+}
 
-    Ok(ElementHeader {
-        id: id_vint,
-        data_size: size_vint,
-        header_size: 0, //TODO: Calculate actual header size
-    })
+#[derive(Debug)]
+pub enum ParsedElement {
+    // EBML Header
+    EBMLHeader(Vec<Element>),
+    // Segment
+    // Info
+    // Tags?
+    Unkown,
+}
+
+#[derive(Debug)]
+pub struct Element {
+    pub meta: NodeMeta,
+    pub parsed: ParsedElement,
+    // pub children: Vec<Node>,
 }
