@@ -13,6 +13,9 @@ pub enum ParseError {
     #[error("invalid Element ID length: {0}")]
     InvalidElementIdLength(u8),
 
+    #[error("invalid Matroska value: {0}")]
+    InvalidMatroskaValue(String),
+
     // TODO: Better error messages
     #[error("unexpected EOF")]
     UnexpectedEOF,

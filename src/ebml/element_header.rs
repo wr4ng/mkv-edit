@@ -1,7 +1,7 @@
 use std::io::{Read, Seek};
 
-use crate::ebml::vint::RawVint;
 use crate::ParseError;
+use crate::ebml::vint::RawVint;
 
 #[derive(Debug)]
 pub struct ElementId {

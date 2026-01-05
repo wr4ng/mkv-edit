@@ -4,8 +4,7 @@
 //TODO: Rename module and/or split
 mod ebml;
 
-use ebml::element::Element;
-use ebml::element::NodeMeta;
+use ebml::ebml_header;
 use ebml::element_header::ElementHeader;
 
 pub use ebml::error::ParseError;
