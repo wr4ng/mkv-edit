@@ -4,7 +4,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum EbmlError {
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
 
     #[error("invalid VINT encoding")]
     InvalidVint,

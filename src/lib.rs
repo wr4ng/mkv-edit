@@ -1,1 +1,1 @@
-mod ebml;
+pub mod ebml;
