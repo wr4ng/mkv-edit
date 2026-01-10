@@ -1,0 +1,10 @@
+[package]
+name = "mkvedit"
+version = "0.1.0"
+edition = "2024"
+
+[lints.clippy]
+pedantic = "warn"
+
+[dependencies]
+thiserror = "2.0.17"
