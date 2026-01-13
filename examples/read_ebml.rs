@@ -14,6 +14,6 @@ impl ebml::EbmlSchema for SimpleEbmlSchema {
 fn main() {
     let file = File::open("sample.mkv").unwrap();
     let mut ebml_reader = ebml::EbmlReader::new(file);
-    let element = ebml::read_element::<SimpleEbmlSchema, _>(&mut ebml_reader).unwrap();
-    dbg!(element);
+    let root = ebml::read_root::<SimpleEbmlSchema, _>(&mut ebml_reader).unwrap();
+    dbg!(root);
 }

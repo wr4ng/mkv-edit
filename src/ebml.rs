@@ -4,4 +4,4 @@ mod vint;
 
 pub use reader::EbmlReader;
 pub use reader::EbmlSchema;
-pub use reader::read_element;
+pub use reader::{read_element, read_root};

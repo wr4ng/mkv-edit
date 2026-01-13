@@ -36,6 +36,19 @@ impl<R: Read + Seek> EbmlReader<R> {
             .map(|_| ())
             .map_err(EbmlError::from)
     }
+
+    fn at_eof(&mut self) -> Result<bool, EbmlError> {
+        let pos = self.position()?;
+        let mut buf = [0u8; 1];
+        match self.reader.read(&mut buf) {
+            Ok(0) => Ok(true),
+            Ok(_) => {
+                self.seek(pos)?;
+                Ok(false)
+            }
+            Err(e) => Err(EbmlError::from(e)),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -105,4 +118,14 @@ pub fn read_element<S: EbmlSchema, R: Read + Seek>(
         data,
         children: None,
     })
+}
+
+pub fn read_root<S: EbmlSchema, R: Read + Seek>(
+    r: &mut EbmlReader<R>,
+) -> Result<Vec<Element>, EbmlError> {
+    let mut elements = Vec::new();
+    while !r.at_eof()? {
+        elements.push(read_element::<S, R>(r)?);
+    }
+    Ok(elements)
 }
