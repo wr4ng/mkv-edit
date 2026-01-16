@@ -1,8 +1,8 @@
 use core::fmt;
 use std::io::{Read, Seek, SeekFrom};
 
+use crate::ebml::element::{EbmlId, EbmlSize};
 use crate::ebml::error::EbmlError;
-use crate::ebml::vint::VInt;
 
 pub trait EbmlSchema {
     //TODO: Rename from master?
@@ -18,12 +18,12 @@ impl<R: Read + Seek> EbmlReader<R> {
         Self { reader }
     }
 
-    fn read_id(&mut self) -> Result<VInt, EbmlError> {
-        VInt::read_id(&mut self.reader)
+    fn read_id(&mut self) -> Result<EbmlId, EbmlError> {
+        EbmlId::read_from(&mut self.reader)
     }
 
-    fn read_size(&mut self) -> Result<VInt, EbmlError> {
-        VInt::read_size(&mut self.reader)
+    fn read_size(&mut self) -> Result<EbmlSize, EbmlError> {
+        EbmlSize::read_from(&mut self.reader)
     }
 
     fn position(&mut self) -> Result<u64, EbmlError> {
@@ -57,14 +57,14 @@ struct ByteRange {
     length: u64,
 }
 
-pub struct Element {
+pub struct ParsedElement {
     id: u64,
     header: ByteRange,
     data: ByteRange,
-    children: Option<Vec<Element>>,
+    children: Option<Vec<ParsedElement>>,
 }
 
-impl fmt::Debug for Element {
+impl fmt::Debug for ParsedElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Element")
             .field("id", &format_args!("{:#x}", self.id))
@@ -77,7 +77,7 @@ impl fmt::Debug for Element {
 
 pub fn read_element<S: EbmlSchema, R: Read + Seek>(
     r: &mut EbmlReader<R>,
-) -> Result<Element, EbmlError> {
+) -> Result<ParsedElement, EbmlError> {
     let header_start = r.position()?;
     let id_vint = r.read_id()?;
     let size_vint = r.read_size()?;
@@ -97,14 +97,13 @@ pub fn read_element<S: EbmlSchema, R: Read + Seek>(
     };
 
     if S::is_master(id_vint.value) {
-        // TODO: Placeholder for reading child elements
         let mut children = Vec::new();
         let end = data.start + data.length;
 
         while r.position()? < end {
             children.push(read_element::<S, R>(r)?);
         }
-        return Ok(Element {
+        return Ok(ParsedElement {
             id: id_vint.value,
             header,
             data,
@@ -112,7 +111,7 @@ pub fn read_element<S: EbmlSchema, R: Read + Seek>(
         });
     }
     r.seek(data.start + data.length)?;
-    Ok(Element {
+    Ok(ParsedElement {
         id: id_vint.value,
         header,
         data,
@@ -122,7 +121,7 @@ pub fn read_element<S: EbmlSchema, R: Read + Seek>(
 
 pub fn read_root<S: EbmlSchema, R: Read + Seek>(
     r: &mut EbmlReader<R>,
-) -> Result<Vec<Element>, EbmlError> {
+) -> Result<Vec<ParsedElement>, EbmlError> {
     let mut elements = Vec::new();
     while !r.at_eof()? {
         elements.push(read_element::<S, R>(r)?);

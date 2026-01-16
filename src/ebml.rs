@@ -1,6 +1,7 @@
-mod error;
+pub mod element;
+pub mod error;
 pub mod reader;
-mod vint;
+pub mod vint;
 
 pub use reader::EbmlReader;
 pub use reader::EbmlSchema;
