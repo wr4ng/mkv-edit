@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{env, fs::File};
 
 use mkvedit::ebml;
 
@@ -11,8 +11,11 @@ impl ebml::EbmlSchema for SimpleEbmlSchema {
     }
 }
 
+// Reads an EBML file specified as the first command line argument
 fn main() {
-    let file = File::open("sample.mkv").unwrap();
+    let args: Vec<String> = env::args().collect();
+
+    let file = File::open(&args[1]).unwrap();
     let mut ebml_reader = ebml::EbmlReader::new(file);
     let root = ebml::read_root::<SimpleEbmlSchema, _>(&mut ebml_reader).unwrap();
     dbg!(root);
