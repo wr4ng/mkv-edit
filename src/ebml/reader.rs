@@ -49,19 +49,28 @@ impl<R: Read + Seek> EbmlReader<R> {
             Err(e) => Err(EbmlError::from(e)),
         }
     }
+
+    pub fn read_range(&mut self, range: &ByteRange) -> Result<Vec<u8>, EbmlError> {
+        self.seek(range.start)?;
+        let mut buf = vec![0u8; range.length as usize];
+        self.reader.read_exact(&mut buf)?;
+        Ok(buf)
+    }
 }
 
-#[derive(Debug)]
-struct ByteRange {
-    start: u64,
-    length: u64,
+//TODO: Move to common?
+#[derive(Debug, Clone)]
+pub struct ByteRange {
+    pub start: u64,
+    pub length: u64,
 }
 
+#[derive(Clone)]
 pub struct ParsedElement {
-    id: u64,
-    header: ByteRange,
-    data: ByteRange,
-    children: Option<Vec<ParsedElement>>,
+    pub id: u64,
+    pub header: ByteRange,
+    pub data: ByteRange,
+    pub children: Option<Vec<ParsedElement>>,
 }
 
 impl fmt::Debug for ParsedElement {
