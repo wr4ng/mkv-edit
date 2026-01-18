@@ -8,6 +8,9 @@ use crate::ebml::{
     reader::{ByteRange, ParsedElement},
 };
 
+mod print_tree;
+pub use print_tree::print_matroska_tree;
+
 const EBML_HEADER_ID: u64 = 0x1A45_DFA3;
 const EBML_HEADER_DOCTYPE_ID: u64 = 0x4282;
 const EBML_HEADER_DOCTYPE_VERSION_ID: u64 = 0x4287;
