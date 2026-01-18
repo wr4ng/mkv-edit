@@ -1,6 +1,9 @@
 use std::fmt::{self, Write};
 
-use crate::matroska::{EbmlHeader, Field, MatroskaDocument};
+use crate::{
+    ebml::reader::ParsedElement,
+    matroska::{EbmlHeader, Field, MatroskaDocument, Segment},
+};
 
 fn indent(out: &mut String, depth: usize) {
     for _ in 1..depth {
@@ -14,6 +17,22 @@ fn branch(out: &mut String, last: bool) {
     } else {
         out.push_str("├── ");
     }
+}
+
+fn print_element_header(out: &mut String, name: &str, raw: &ParsedElement, show_raw: bool) {
+    write!(out, "{name}").unwrap();
+
+    if show_raw {
+        write!(
+            out,
+            " [bytes {}..{}]",
+            raw.header.start,
+            raw.data.start + raw.data.length
+        )
+        .unwrap();
+    }
+
+    out.push('\n');
 }
 
 fn print_field<T: fmt::Debug>(
@@ -58,17 +77,8 @@ fn print_ebml_header(
 ) {
     indent(out, depth);
     branch(out, last);
-    if show_raw {
-        write!(
-            out,
-            "EBML Header [bytes {}..{}]\n",
-            ebml.raw.header.start,
-            ebml.raw.data.start + ebml.raw.data.length
-        )
-        .unwrap();
-    } else {
-        out.push_str("EBML Header\n");
-    }
+
+    print_element_header(out, "EBML Header", &ebml.raw, show_raw);
 
     print_field(out, depth + 1, false, "docType", &ebml.doctype, show_raw);
     print_field(
@@ -105,12 +115,21 @@ fn print_ebml_header(
     );
 }
 
+fn print_segment(out: &mut String, depth: usize, last: bool, segment: &Segment, show_raw: bool) {
+    indent(out, depth);
+    branch(out, last);
+
+    print_element_header(out, "Segment", &segment.raw, show_raw);
+    // print_field(...);
+}
+
 pub fn print_matroska_tree(doc: &MatroskaDocument, show_bytes: bool) -> String {
     let mut out = String::new();
 
     out.push_str("MatroskaDocument\n");
 
     print_ebml_header(&mut out, 1, false, &doc.ebml_header, show_bytes);
+    print_segment(&mut out, 1, true, &doc.segment, show_bytes);
 
     // Extend later:
     // print_segment(&mut out, 1, true, &doc.segment, show_raw);

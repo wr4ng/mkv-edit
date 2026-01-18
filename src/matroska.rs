@@ -200,8 +200,15 @@ impl MatroskaElement for EbmlHeader {
 }
 
 #[derive(Debug)]
+pub struct Segment {
+    pub raw: ParsedElement,
+    //TODO: info: Info...
+}
+
+#[derive(Debug)]
 pub struct MatroskaDocument {
     pub ebml_header: EbmlHeader,
+    pub segment: Segment,
 }
 
 impl MatroskaDocument {
@@ -213,11 +220,24 @@ impl MatroskaDocument {
             return Err(MatroskaParseError::MissingEbmlHeader);
         }
 
+        if root.len() < 2 {
+            return Err(MatroskaParseError::InvalidEbmlHeader(
+                "missing Segment element",
+            ));
+        }
+
         if root[0].id != EBML_HEADER_ID {
             return Err(MatroskaParseError::MissingEbmlHeader);
         }
 
         let ebml_header = EbmlHeader::parse(&mut matroska_reader, &root[0])?;
-        Ok(Self { ebml_header })
+        //TODO: Parse Segment
+        let segment = Segment {
+            raw: root[1].clone(),
+        };
+        Ok(Self {
+            ebml_header,
+            segment,
+        })
     }
 }
