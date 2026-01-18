@@ -51,8 +51,10 @@ impl<R: Read + Seek> EbmlReader<R> {
     }
 
     pub fn read_range(&mut self, range: &ByteRange) -> Result<Vec<u8>, EbmlError> {
+        //TODO: Maybe more appropriate error than InvalidVint
+        let num_bytes = usize::try_from(range.length).map_err(|_| EbmlError::InvalidVint)?;
+        let mut buf = vec![0u8; num_bytes];
         self.seek(range.start)?;
-        let mut buf = vec![0u8; range.length as usize];
         self.reader.read_exact(&mut buf)?;
         Ok(buf)
     }
