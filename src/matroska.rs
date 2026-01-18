@@ -162,22 +162,36 @@ impl MatroskaElement for EbmlHeader {
             }
         }
 
-        //TODO: Validate required children
         let doctype = doctype.ok_or(MatroskaParseError::InvalidEbmlHeader("missing docType"))?;
+        let doctype_version = doctype_version.unwrap_or(Field::new(1));
+        let doctype_read_version = doctype_read_version.unwrap_or(Field::new(1));
+        let max_id_length = max_id_length.unwrap_or(Field::new(4));
+        let max_size_length = max_size_length.unwrap_or(Field::new(8));
 
+        // Validate Matroska EBML constraints
         if doctype.value != "matroska" {
             return Err(MatroskaParseError::InvalidEbmlHeader(
                 "docType is not matroska",
+            ));
+        }
+        if max_id_length.value != 4 {
+            return Err(MatroskaParseError::InvalidEbmlHeader(
+                "maxIDLength is not 4",
+            ));
+        }
+        if max_size_length.value != 8 {
+            return Err(MatroskaParseError::InvalidEbmlHeader(
+                "maxSizeLength is not 8",
             ));
         }
 
         Ok(Self {
             raw: raw.clone(),
             doctype,
-            doctype_version: doctype_version.unwrap_or(Field::new(1)),
-            doctype_read_version: doctype_read_version.unwrap_or(Field::new(1)),
-            max_id_length: max_id_length.unwrap_or(Field::new(4)),
-            max_size_length: max_size_length.unwrap_or(Field::new(8)),
+            doctype_version,
+            doctype_read_version,
+            max_id_length,
+            max_size_length,
         })
     }
 }
