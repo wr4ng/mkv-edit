@@ -95,6 +95,7 @@ impl EbmlSize {
 pub enum Element {
     Raw { id: u64, data: Vec<u8> },
     Master { id: u64, children: Vec<Element> },
+    Root { children: Vec<Element> },
 }
 
 impl Element {
@@ -124,6 +125,11 @@ impl Element {
                 buffer.extend(ebml_id.to_bytes());
                 buffer.extend(ebml_size.to_bytes());
                 buffer.extend(children_bytes);
+            }
+            Element::Root { children } => {
+                for child in children {
+                    buffer.extend(child.to_bytes()?);
+                }
             }
         }
         Ok(buffer)

@@ -7,6 +7,6 @@ fn main() {
 
     let file = File::open(&args[1]).unwrap();
     let matroska_doc = MatroskaDocument::parse_from(file).unwrap();
-    println!("{}", print_matroska_tree(&matroska_doc, true));
-    println!("{}", print_matroska_tree(&matroska_doc, false));
+    println!("{}", print_matroska_tree(&matroska_doc, true).unwrap());
+    println!("{}", print_matroska_tree(&matroska_doc, false).unwrap());
 }

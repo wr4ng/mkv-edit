@@ -8,21 +8,24 @@ use crate::ebml::{
     reader::{ByteRange, ParsedElement},
 };
 
-mod print_tree;
-pub use print_tree::print_matroska_tree;
+mod printer;
+pub use printer::print_matroska_tree;
 
-const EBML_HEADER_ID: u64 = 0x1A45_DFA3;
-const EBML_HEADER_DOCTYPE_ID: u64 = 0x4282;
-const EBML_HEADER_DOCTYPE_VERSION_ID: u64 = 0x4287;
-const EBML_HEADER_DOCTYPE_READ_VERSION_ID: u64 = 0x4285;
-const EBML_HEADER_MAX_ID_LENGTH_ID: u64 = 0x42F2;
-const EBML_HEADER_MAX_SIZE_LENGTH_ID: u64 = 0x42F3;
+pub const EBML_HEADER_ID: u64 = 0x1A45_DFA3;
+pub const EBML_HEADER_DOCTYPE_ID: u64 = 0x4282;
+pub const EBML_HEADER_DOCTYPE_VERSION_ID: u64 = 0x4287;
+pub const EBML_HEADER_DOCTYPE_READ_VERSION_ID: u64 = 0x4285;
+pub const EBML_HEADER_MAX_ID_LENGTH_ID: u64 = 0x42F2;
+pub const EBML_HEADER_MAX_SIZE_LENGTH_ID: u64 = 0x42F3;
+
+pub const SEGMENT_ID: u64 = 0x1853_8067;
+pub const INFO_ID: u64 = 0x1549_A966;
 
 pub struct MatroskaSchema;
 
 impl EbmlSchema for MatroskaSchema {
     fn is_master(id: u64) -> bool {
-        matches!(id, EBML_HEADER_ID)
+        matches!(id, EBML_HEADER_ID | SEGMENT_ID)
     }
 }
 
@@ -33,6 +36,9 @@ pub enum MatroskaParseError {
 
     #[error("invalid EBML header: {0}")]
     InvalidEbmlHeader(&'static str),
+
+    #[error("missing required element: {0}")]
+    MissingElement(&'static str),
 
     #[error("value error: {0}")]
     ValueError(#[from] ValueError),
@@ -202,7 +208,55 @@ impl MatroskaElement for EbmlHeader {
 #[derive(Debug)]
 pub struct Segment {
     pub raw: ParsedElement,
-    //TODO: info: Info...
+    pub info: Info,
+}
+
+impl MatroskaElement for Segment {
+    const ID: u64 = SEGMENT_ID;
+
+    fn parse<R: Read + Seek>(
+        reader: &mut MatroskaReader<R>,
+        raw: &ParsedElement,
+    ) -> Result<Self, MatroskaParseError> {
+        assert!(raw.id == Self::ID, "trying to parse invalid element");
+
+        let mut info = None;
+
+        for child in raw.children.as_deref().unwrap_or(&[]) {
+            match child.id {
+                INFO_ID => {
+                    info = Some(Info::parse(reader, child)?);
+                }
+                _ => println!("Warning: unhandled Segment child ID {:X}", child.id),
+            }
+        }
+
+        let info = info.ok_or(MatroskaParseError::MissingElement("Info"))?;
+
+        Ok(Self {
+            raw: raw.clone(),
+            info,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct Info {
+    pub raw: ParsedElement,
+}
+
+impl MatroskaElement for Info {
+    const ID: u64 = INFO_ID;
+
+    fn parse<R: Read + Seek>(
+        _: &mut MatroskaReader<R>,
+        raw: &ParsedElement,
+    ) -> Result<Self, MatroskaParseError> {
+        assert!(raw.id == Self::ID, "trying to parse invalid element");
+
+        //TODO: Parse Info children
+        Ok(Self { raw: raw.clone() })
+    }
 }
 
 #[derive(Debug)]
@@ -231,10 +285,8 @@ impl MatroskaDocument {
         }
 
         let ebml_header = EbmlHeader::parse(&mut matroska_reader, &root[0])?;
-        //TODO: Parse Segment
-        let segment = Segment {
-            raw: root[1].clone(),
-        };
+        let segment = Segment::parse(&mut matroska_reader, &root[1])?;
+
         Ok(Self {
             ebml_header,
             segment,

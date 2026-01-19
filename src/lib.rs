@@ -3,3 +3,4 @@
 
 pub mod ebml;
 pub mod matroska;
+mod util;
