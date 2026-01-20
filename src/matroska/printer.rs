@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Write;
 
 use crate::ebml::reader::ParsedElement;
-use crate::matroska::{EbmlHeader, Field, Info, MatroskaDocument, Segment};
+use crate::matroska::{EbmlHeader, Field, Info, MatroskaDocument, OptionalField, Segment};
 use crate::util::tree_printer::{TreePrintable, TreePrinter};
 
 fn element_label(name: &str, raw: &ParsedElement, show_bytes: bool) -> String {
@@ -19,19 +19,29 @@ fn element_label(name: &str, raw: &ParsedElement, show_bytes: bool) -> String {
     label
 }
 
-fn field_label<T: fmt::Debug>(name: &str, field: &Field<T>, show_bytes: bool) -> Option<String> {
-    let raw = field.raw.as_ref()?;
+fn field_label<T: fmt::Debug>(name: &str, field: &Field<T>, show_bytes: bool) -> String {
     let mut label = format!("{name}: {:?}", field.value);
     if show_bytes {
         write!(
             label,
             " [bytes {}..{}]",
-            raw.header.start,
-            raw.data.start + raw.data.length
+            field.raw.header.start,
+            field.raw.data.start + field.raw.data.length
         )
         .unwrap();
     }
-    Some(label)
+    label
+}
+
+fn optional_field_label<T: fmt::Debug>(
+    name: &str,
+    field: &OptionalField<T>,
+    show_bytes: bool,
+) -> Option<String> {
+    match field {
+        OptionalField::Present(f) => Some(field_label(name, f, show_bytes)),
+        OptionalField::Default(_) => None,
+    }
 }
 
 impl TreePrintable for EbmlHeader {
@@ -49,11 +59,11 @@ impl TreePrintable for EbmlHeader {
         )?;
         printer.child_scope(last, |printer| {
             let labels = vec![
-                field_label("docType", &self.doctype, show_bytes),
-                field_label("docTypeVersion", &self.doctype_version, show_bytes),
-                field_label("docTypeReadVersion", &self.doctype_read_version, show_bytes),
-                field_label("maxIDLength", &self.max_id_length, show_bytes),
-                field_label("maxSizeLength", &self.max_size_length, show_bytes),
+                Some(field_label("docType", &self.doctype, show_bytes)),
+                optional_field_label("docTypeVersion", &self.doctype_version, show_bytes),
+                optional_field_label("docTypeReadVersion", &self.doctype_read_version, show_bytes),
+                optional_field_label("maxIDLength", &self.max_id_length, show_bytes),
+                optional_field_label("maxSizeLength", &self.max_size_length, show_bytes),
             ]
             .into_iter()
             .flatten()

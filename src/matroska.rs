@@ -5,6 +5,7 @@ use thiserror::Error;
 use crate::ebml::{
     self, EbmlReader, EbmlSchema,
     error::EbmlError,
+    primitives::{ValueError, parse_string, parse_u64},
     reader::{ByteRange, ParsedElement},
 };
 
@@ -77,62 +78,77 @@ impl<R: Read + Seek> MatroskaReader<R> {
 
 #[derive(Debug)]
 pub struct Field<T> {
-    pub raw: Option<ParsedElement>,
+    pub raw: ParsedElement,
     pub value: T,
 }
 
 impl<T> Field<T> {
-    pub fn new(value: T) -> Self {
-        Self { raw: None, value }
+    fn parse<R: Read + Seek>(
+        reader: &mut MatroskaReader<R>,
+        raw: &ParsedElement,
+        parse_func: impl Fn(Vec<u8>) -> Result<T, ValueError>,
+    ) -> Result<Self, MatroskaParseError> {
+        //TODO: Handle raw.data.lenth == 0 (default value)
+        let bytes = reader.read_range(&raw.data)?;
+        Ok(Self {
+            raw: raw.clone(),
+            value: parse_func(bytes)?,
+        })
     }
 }
 
-#[derive(Debug, Error)]
-pub enum ValueError {
-    #[error("invalid UTF-8 string")]
-    InvalidUTF8,
-
-    #[error("invalid integer length: {0}")]
-    InvalidLength(usize),
-}
-
-fn parse_string(bytes: Vec<u8>) -> Result<String, ValueError> {
-    String::from_utf8(bytes).map_err(|_| ValueError::InvalidUTF8)
-}
-
-fn parse_u64(bytes: Vec<u8>) -> Result<u64, ValueError> {
-    //TODO: Handle zero length
-    if bytes.len() > 8 {
-        return Err(ValueError::InvalidLength(bytes.len()));
+impl Field<String> {
+    pub fn parse_string<R: Read + Seek>(
+        reader: &mut MatroskaReader<R>,
+        raw: &ParsedElement,
+    ) -> Result<Self, MatroskaParseError> {
+        Self::parse(reader, raw, parse_string)
     }
-    let mut value: u64 = 0;
-    for byte in bytes {
-        value = (value << 8) | u64::from(byte);
-    }
-    Ok(value)
 }
 
-fn parse_field<T, R: Read + Seek>(
-    reader: &mut MatroskaReader<R>,
-    raw: &ParsedElement,
-    parse_func: impl Fn(Vec<u8>) -> Result<T, ValueError>,
-) -> Result<Field<T>, MatroskaParseError> {
-    //TODO: Handle empty data (default value?)
-    let bytes = reader.read_range(&raw.data)?;
-    Ok(Field {
-        raw: Some(raw.clone()),
-        value: parse_func(bytes)?,
-    })
+impl Field<u64> {
+    pub fn parse_u64<R: Read + Seek>(
+        reader: &mut MatroskaReader<R>,
+        raw: &ParsedElement,
+    ) -> Result<Self, MatroskaParseError> {
+        Self::parse(reader, raw, parse_u64)
+    }
+}
+
+#[derive(Debug)]
+pub enum OptionalField<T> {
+    Present(Field<T>),
+    Default(T),
+}
+
+impl<T: Copy> OptionalField<T> {
+    pub fn value(&self) -> T {
+        match self {
+            OptionalField::Present(field) => field.value,
+            OptionalField::Default(value) => *value,
+        }
+    }
+
+    pub fn new_default(value: T) -> Self {
+        OptionalField::Default(value)
+    }
+
+    pub fn new_or_default(field: Option<Field<T>>, default: T) -> Self {
+        match field {
+            Some(f) => OptionalField::Present(f),
+            None => OptionalField::Default(default),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct EbmlHeader {
     pub raw: ParsedElement,
     pub doctype: Field<String>,
-    pub doctype_version: Field<u64>,
-    pub doctype_read_version: Field<u64>,
-    pub max_id_length: Field<u64>,
-    pub max_size_length: Field<u64>,
+    pub doctype_version: OptionalField<u64>,
+    pub doctype_read_version: OptionalField<u64>,
+    pub max_id_length: OptionalField<u64>,
+    pub max_size_length: OptionalField<u64>,
 }
 
 impl MatroskaElement for EbmlHeader {
@@ -153,29 +169,29 @@ impl MatroskaElement for EbmlHeader {
         for child in raw.children.as_deref().unwrap_or(&[]) {
             match child.id {
                 EBML_HEADER_DOCTYPE_ID => {
-                    doctype = Some(parse_field(reader, child, parse_string)?);
+                    doctype = Some(Field::parse_string(reader, child)?);
                 }
                 EBML_HEADER_DOCTYPE_VERSION_ID => {
-                    doctype_version = Some(parse_field(reader, child, parse_u64)?);
+                    doctype_version = Some(Field::parse_u64(reader, child)?);
                 }
                 EBML_HEADER_DOCTYPE_READ_VERSION_ID => {
-                    doctype_read_version = Some(parse_field(reader, child, parse_u64)?);
+                    doctype_read_version = Some(Field::parse_u64(reader, child)?);
                 }
                 EBML_HEADER_MAX_ID_LENGTH_ID => {
-                    max_id_length = Some(parse_field(reader, child, parse_u64)?);
+                    max_id_length = Some(Field::parse_u64(reader, child)?);
                 }
                 EBML_HEADER_MAX_SIZE_LENGTH_ID => {
-                    max_size_length = Some(parse_field(reader, child, parse_u64)?);
+                    max_size_length = Some(Field::parse_u64(reader, child)?);
                 }
                 _ => println!("Warning: unhandled EBML Header child ID {:X}", child.id),
             }
         }
 
         let doctype = doctype.ok_or(MatroskaParseError::InvalidEbmlHeader("missing docType"))?;
-        let doctype_version = doctype_version.unwrap_or(Field::new(1));
-        let doctype_read_version = doctype_read_version.unwrap_or(Field::new(1));
-        let max_id_length = max_id_length.unwrap_or(Field::new(4));
-        let max_size_length = max_size_length.unwrap_or(Field::new(8));
+        let doctype_version = OptionalField::new_or_default(doctype_version, 1);
+        let doctype_read_version = OptionalField::new_or_default(doctype_read_version, 1);
+        let max_id_length = OptionalField::new_or_default(max_id_length, 4);
+        let max_size_length = OptionalField::new_or_default(max_size_length, 8);
 
         // Validate Matroska EBML constraints
         if doctype.value != "matroska" {
@@ -183,12 +199,12 @@ impl MatroskaElement for EbmlHeader {
                 "docType is not matroska",
             ));
         }
-        if max_id_length.value != 4 {
+        if max_id_length.value() != 4 {
             return Err(MatroskaParseError::InvalidEbmlHeader(
                 "maxIDLength is not 4",
             ));
         }
-        if max_size_length.value != 8 {
+        if max_size_length.value() != 8 {
             return Err(MatroskaParseError::InvalidEbmlHeader(
                 "maxSizeLength is not 8",
             ));

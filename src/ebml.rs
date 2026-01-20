@@ -1,5 +1,6 @@
 pub mod element;
 pub mod error;
+pub mod primitives;
 pub mod reader;
 pub mod vint;
 
